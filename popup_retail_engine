@@ -14,7 +14,9 @@ import popup_retail_methods
 import page_objects
 
 # TODO:
-# Fix regex for identifying data of interest.
+# - Fix parser so that it creates data rows as per requirements.
+# - Loop correctly through cities that have less than three (3) pages of listings.
+# - Correctly build XPATHs where preceding listing has a hidden price.
 
 class popup_retail(unittest.TestCase):
     def setUp(self):
