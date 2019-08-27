@@ -1,155 +1,120 @@
-# -*- coding: utf-8 -*-
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import Select
 from selenium.common.exceptions import NoSuchElementException
 from selenium.common.exceptions import NoAlertPresentException
-import unittest, datetime, time, re
+import unittest
+import datetime
+import time
+import re
+import json
+import globals
+import popup_retail_methods
+import page_objects
+
+# TODO:
+# Fix regex for identifying data of interest.
 
 class popup_retail(unittest.TestCase):
     def setUp(self):
         self.driver = webdriver.Chrome()
         self.driver.implicitly_wait(10)
         self.verificationErrors = []
-        self.accept_next_alert = True
+        self.accept_next_alert = True        
     
+    # Engine has to start with string 'test' for unittest to work.
     def test_engine(self):
         driver = self.driver
 
-        def get_listing_data(tab_data, num_col):
-            data = tab_data.split('\n')
-            data_row = [None] * num_col
-            to_write = ''
-            delimiter = ','
-
-            # Title of listing
-            data_row[0] = data[1]
-
-            # Location / Neighborhood
-            data_row[1] = data[2]
-
-            for i, datum in enumerate(data):
-                # Size(SF)
-                # if 'Size: ' in datum: data_row.append(datum[6:len(datum) - 2])
-                if 'Size' in datum:
-                    data_row[2] = datum[6:len(datum) - 6]
-                
-                # Rent Per Day
-                if 'per day' in datum:
-                    data_row[3] = datum[1:len(datum) - 7]
-
-                # Rent Per Weekend Day
-                if 'weekend day' in datum:
-                    data_row[4] = datum[1:len(datum) - 11]
-
-                # Rent Per Week
-                # if 'per week' in datum: data_row.append(datum[1:len(datum) - 8])
-                if 'per week' in datum:
-                    data_row[5] = datum[1:len(datum) - 8]
-
-                # Rent Per Month
-                # if 'per month' in datum: data_row.append(datum[1:len(datum) - 8])
-                if 'per month' in datum:
-                    data_row[6] = datum[1:len(datum) - 9]
-
-                # Space Type
-                # if 'Space Type: ' in datum: data_row.append(datum[12:len(datum)])
-                if 'Space Type' in datum:
-                    data_row[7] = datum[12:len(datum)]
-
-                # Floor / Access
-                # if 'Floor/Access: ' in datum: data_row.append(datum[14:len(datum)])
-                if 'Floor/Access' in datum:
-                    data_row[8] = datum[14:len(datum)]
-
-                # Rental Capacity
-                # if 'Rental Capacity: ' in datum: data_row.append(datum[17:len(datum)])
-                if 'Rental Capacity' in datum:
-                    data_row[9] = datum[17:len(datum)]
-
-                # Min Rental
-                # if 'Minimum Rental: ' in datum: data_row.append(datum[16:len(datum)])
-                if 'Minimum Rental' in datum:
-                    data_row[10] = datum[16:len(datum)]
-
-                # Max Rental
-                # if 'Maximum Rental: ' in datum: data_row.append(datum[16:len(datum)])
-                if 'Maximum Rental' in datum:
-                    data_row[11] = datum[16:len(datum)]
-
-                # Amenities
-                if 'Amenities' in datum:
-                    amenities = data[i + 1]
-                    matches = re.findall('[a-z][A-Z]', amenities)
-                    for m in matches:
-                        # print(m[0] + ';' + m[1])
-                        amenities = re.sub(m, m[0] + ';' + m[1], amenities)
-                    data_row[12] = amenities
-                    
-                # About This Space
-                if 'About this space' in datum:
-                    about = ''
-                    j = i + 1
-                    while data[j] != 'Ideal Uses':
-                        about = about + str(data[j])
-                        j = j + 1
-                    about = chr(34) + about + chr(34)
-                    data_row[13] = about
-
-                # if 'Ref Number: ' in datum: data_row.append(datum[12:len(datum)])
-                if 'Ref Number' in datum: data_row[14] = datum[16:len(datum)]
-            
-            for r in data_row:
-                if r != None:
-                    to_write = to_write + r + delimiter
-                else:
-                    to_write = to_write + 'NULL' + delimiter
-
-            return to_write
-
-        ts = str(datetime.datetime.utcnow()).replace(':', '')
-        ts = ts.replace('-', '')
-        ts = ts[0:15]
-    
-        output_file = open('C:\\Users\\Daniel\\Documents\\popup_retail\\nyc_popup_retail_data_' + ts + '.csv','w')
-        header_row = '"Title of listing","Location/Neighborhood","Size (SF)","Rent per day","Rent per weekend day","Rent per week","Rent per month","Space Type","Floor/Access","Rental Capacity","Minimum Rental","Maximum Rental","About this Space","Amenities","RefNum"'
-        output_file.write(header_row + '\n')
-        num_col = (header_row.count(',') + 1)
+        current_path = globals.get_current_path()
+        current_path = current_path.replace('Engine','')
+        ts = globals.get_timestamp()
+        output_file = open(current_path + 'outputs\\nyc_popup_retail_data_' + ts + '.csv','w')
+        debug_file = open(current_path + 'debug\\nyc_popup_retail_debug_' + ts + '.txt','w')
         
-        landing_url = 'https://www.thestorefront.com/search?address=New%20York,%20NY,%20USA&zoom=10&latitude=40.7127837&longitude=-74.00594130000002&lat_g=40.4913699&lat_l=40.91525559999999&lng_g=-74.25908989999999&lng_l=-73.7002721&s=score%20DESC&country=United%20States&city=New%20York&page=1'
-        driver.get(landing_url)
+        delimiter = globals.get_delimiter()
+        headers = globals.get_header(delimiter)
+        output_file.write(headers + '\n')
 
-        driver.find_element(By.XPATH, '(.//*[normalize-space(text()) and normalize-space(.)="'"Loading Listings"'"])[1]/following::div[3]').click()
-        driver.switch_to.window(driver.window_handles[1])
+        # landing_url = globals.get_landing_url()
+        # driver.get(landing_url)
 
-        tab_data = driver.find_element(By.XPATH, '(.//*[normalize-space(text()) and normalize-space(.)="'"Login"'"])[1]/following::div[2]').text
-        listing_info = get_listing_data(tab_data, num_col)
-        output_file.write(listing_info + '\n')
-        driver.close()
+        landing_urls = globals.get_landing_urls()
+        for landing_url in landing_urls:
+            driver.get(landing_urls[landing_url])
 
-        driver.find_element(By.XPATH, '(.//*[normalize-space(text()) and normalize-space(.)="per day"])[1]/following::div[2]').click()
-        driver.switch_to.window(driver.window_handles[1])
-        
-        tab_data = driver.find_element(By.XPATH, '(.//*[normalize-space(text()) and normalize-space(.)="'"Login"'"])[1]/following::div[2]').text
-        listing_info = get_listing_data(tab_data, num_col)
-        output_file.write(listing_info + '\n')
-        # driver.close()
-        driver.find_element_by_tag_name('body').send_keys(Keys.CONTROL + 'w')
-        driver.switch_to.window(driver.window_handles[0])
-        # driver.find_element(By.XPATH, '(.//*[normalize-space(text()) and normalize-space(.)="per day"])[2]/following::div[2]').click()
-        # driver.find_element(By.XPATH, '(.//*[normalize-space(text()) and normalize-space(.)="per day"])[3]/following::div[2]').click()
-        # driver.find_element(By.XPATH, '(.//*[normalize-space(text()) and normalize-space(.)="per day"])[4]/following::div[2]').click()
-        # driver.find_element(By.XPATH, '(.//*[normalize-space(text()) and normalize-space(.)="per day"])[5]/following::div[2]').click()
+            try:
+                number_of_pages = driver.find_element(By.XPATH, '(.//*[normalize-space(text()) and normalize-space(.)="'"..."'"])[1]/following::li[1]').text
+                number_of_pages = int(number_of_pages)
+            except:
+                number_of_pages = 1
+
+            page_number = 0
+            page_data = []
+
+            while page_number < number_of_pages:
+                landing_page_text = driver.find_element(By.XPATH, '(.//*[normalize-space(text()) and normalize-space(.)="'"Loading Listings"'"])[1]/following::div[1]').text
+                landing_page_text = globals.clean_page_text(landing_page_text)
+                xpaths_to_navigate = popup_retail_methods.build_xpaths(landing_page_text)
+
+                for xpath in xpaths_to_navigate:
+                    try:
+                        driver.find_element(By.XPATH, xpath).click()
+                        driver.switch_to.window(driver.window_handles[1])
+
+                        try:
+                            tab_data = driver.find_element(By.XPATH, '(.//*[normalize-space(text()) and normalize-space(.)="'"Login"'"])[1]/following::div[9]').text
+                            tab_data = globals.clean_page_text(tab_data)
+                            debug_file.write(tab_data + '\n\n')
+                            page_data.append(tab_data)
+                        except:
+                            url = str(driver.current_url)
+                            print('Error at retrieving data on "%s".\n' % (url))
+                            debug_file.write('Error at retrieving data on "%s".\n' % (url))
+                            
+                        driver.close()
+                        driver.switch_to.window(driver.window_handles[0])
+                        tab_data = ''
+                    except:
+                        url = str(driver.current_url)
+                        print('Error at opening xpath "%s" from page "%s".\n' % (xpath, url))
+                        debug_file.write('Error at opening xpath "%s" from page "%s".\n' % (xpath, url))
+
+                page_number += 1
+                landing_page_text = ''
+                xpaths_to_navigate = []
+
+                try:
+                    multi_pages = driver.find_element(By.XPATH, '(.//*[normalize-space(text()) and normalize-space(.)="'"..."'"])[1]/following::i[1]')
+                    if multi_pages == True:
+                        driver.find_element(By.XPATH, '(.//*[normalize-space(text()) and normalize-space(.)="'"..."'"])[1]/following::i[1]').click()
+                    else:
+                        driver.find_element(By.XPATH, '(.//*[normalize-space(text()) and normalize-space(.)="'"per day"'"])[' + len(xpaths_to_navigate) + ']/following::i[1]').click()
+                except:
+                    url = str(driver.current_url)
+                    print('Error navigating to next page from URL %s.\n' % (url))
+                    debug_file.write('Error navigating to next page from URL %s.\n' % (url))
+                    break
+
+            for page in page_data:
+                listing_data_row = popup_retail_methods.get_listing_data(page, headers)
+                output_file.write(listing_data_row + '\n')
+
+        output_file.close()
+        debug_file.close()
 
     def is_element_present(self, how, what):
-        try: self.driver.find_element(by=how, value=what)
-        except NoSuchElementException as e: return False
+        try:
+            self.driver.find_element(by = how, value = what)
+        except NoSuchElementException:
+            print(str(how) + ' ' + str(what))
+            return False
         return True
     
     def is_alert_present(self):
         try: self.driver.switch_to_alert()
-        except NoAlertPresentException as e: return False
+        except NoAlertPresentException: return False
         return True
     
     def close_alert_and_get_its_text(self):
@@ -161,7 +126,9 @@ class popup_retail(unittest.TestCase):
             else:
                 alert.dismiss()
             return alert_text
-        finally: self.accept_next_alert = True
+        finally:
+            print(alert_text)
+            self.accept_next_alert = True
     
     def tearDown(self):
         self.driver.quit()
