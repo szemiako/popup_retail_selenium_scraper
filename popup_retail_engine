@@ -25,9 +25,7 @@ TO DO:
     2.1.2.  If the _previous_ card was a "Price upon request" card.
     2.2.    Any permutation of the above can affect the clickable div.
     3.  Moving methods navigation and clicking elements to a page object model.
-    4.  Changing the parser, specifically for issue with false positives between "per day" and "per weekend day".'
-    5.  Changes to each listing page, specifically inclusion of photos (n more photos) causing parsing to mis-align.
-    6.  Email the results!
+    4.  Email the results!
 """
 
 class popup_retail(unittest.TestCase):
