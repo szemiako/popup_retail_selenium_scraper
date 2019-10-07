@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -10,131 +12,134 @@ import time
 import re
 import json
 import globals
-import popup_retail_methods
-import page_objects
+import popup_retail_parser
+# import popup_retail_pom
 
-# TODO:
-# - Fix parser so that it creates data rows as per requirements.
-# - Loop correctly through cities that have less than three (3) pages of listings.
-# - Correctly build XPATHs where preceding listing has a hidden price.
+"""
+TO DO:
+    1.  Handling different number of cards per row, depending on how landing page loads. (Layout types)
+    1.1.    Can be one (1), two (2), or three (3) cards per row.
+    2.  Handling different tags that change div for a card. (Card types)
+    2.1.    Types of tages that affect div:
+    2.1.1.  Number of likes
+    2.1.2.  If the _previous_ card was a "Price upon request" card.
+    2.2.    Any permutation of the above can affect the clickable div.
+    3.  Moving methods navigation and clicking elements to a page object model.
+    4.  Changing the parser, specifically for issue with false positives between "per day" and "per weekend day".'
+    5.  Changes to each listing page, specifically inclusion of photos (n more photos) causing parsing to mis-align.
+    6.  Email the results!
+"""
 
 class popup_retail(unittest.TestCase):
     def setUp(self):
-        self.driver = webdriver.Chrome()
+        options = webdriver.ChromeOptions()
+        options.add_argument("--start-maximized")
+        self.driver = webdriver.Chrome(chrome_options=options)
+        
         self.driver.implicitly_wait(10)
         self.verificationErrors = []
-        self.accept_next_alert = True        
     
-    # Engine has to start with string 'test' for unittest to work.
+    # Engine has to start with string "test" for unittest to work.
     def test_engine(self):
         driver = self.driver
 
         current_path = globals.get_current_path()
-        current_path = current_path.replace('Engine','')
+        current_path = current_path.replace("Engine","")
         ts = globals.get_timestamp()
-        output_file = open(current_path + 'outputs\\nyc_popup_retail_data_' + ts + '.csv','w')
-        debug_file = open(current_path + 'debug\\nyc_popup_retail_debug_' + ts + '.txt','w')
+        
+        output_file = open(current_path + "outputs\\nyc_popup_retail_data_" + ts + ".csv","w")
+        debug_file = open(current_path + "debug\\nyc_popup_retail_debug_" + ts + ".txt","w")
         
         delimiter = globals.get_delimiter()
-        headers = globals.get_header(delimiter)
-        output_file.write(headers + '\n')
-
-        # landing_url = globals.get_landing_url()
-        # driver.get(landing_url)
-
+        headers = globals.get_header()
+        for header in headers: output_file.write(str(headers[header] + delimiter))
+        output_file.write("\n")
+        
         landing_urls = globals.get_landing_urls()
         for landing_url in landing_urls:
             driver.get(landing_urls[landing_url])
+            base_url = driver.current_url
+            base_url = base_url[0:-1]
 
             try:
-                number_of_pages = driver.find_element(By.XPATH, '(.//*[normalize-space(text()) and normalize-space(.)="'"..."'"])[1]/following::li[1]').text
-                number_of_pages = int(number_of_pages)
+                listing_cards = driver.find_element(By.XPATH, "(.//*[normalize-space(text()) and normalize-space(.)='Loading Listings'])[1]/following::div[1]").text
+                listing_cards = globals.clean_page_text(listing_cards)
+                total_cards = popup_retail_parser.get_xpath_span(listing_cards)
+                
+                number_of_pages = driver.find_element(By.XPATH, "(.//*[normalize-space(text()) and normalize-space(.)='per day'])[{total_cards}]/following::div[3]".format(total_cards = total_cards)).text
+
+                if "..." in number_of_pages:
+                    highest_page_number = number_of_pages.split("...")
+                    number_of_pages = highest_page_number[1]
+                else:
+                    number_of_pages = number_of_pages[-1]
             except:
+                error = globals.simple_error("page_retrival_error", driver.current_url, total_cards)
+                print(error)
+                debug_file.write(error)
                 number_of_pages = 1
 
-            page_number = 0
+            number_of_pages = int(number_of_pages)
+            print("The maximum number of pages is {number_of_pages}.".format(number_of_pages = number_of_pages))
+            page_number = 1
             page_data = []
 
-            while page_number < number_of_pages:
-                landing_page_text = driver.find_element(By.XPATH, '(.//*[normalize-space(text()) and normalize-space(.)="'"Loading Listings"'"])[1]/following::div[1]').text
+            while page_number <= number_of_pages:
+                print("The current page is {page_number}.".format(page_number = page_number))
+                landing_page_text = driver.find_element(By.XPATH, "(.//*[normalize-space(text()) and normalize-space(.)='Loading Listings'])[1]/following::div[1]").text
                 landing_page_text = globals.clean_page_text(landing_page_text)
-                xpaths_to_navigate = popup_retail_methods.build_xpaths(landing_page_text)
+                xpaths_to_navigate = popup_retail_parser.build_xpaths(landing_page_text)
 
                 for xpath in xpaths_to_navigate:
                     try:
+                        print("Attempting to click '"'{xpath}'"'".format(xpath = xpath))
                         driver.find_element(By.XPATH, xpath).click()
                         driver.switch_to.window(driver.window_handles[1])
-
-                        try:
-                            tab_data = driver.find_element(By.XPATH, '(.//*[normalize-space(text()) and normalize-space(.)="'"Login"'"])[1]/following::div[9]').text
-                            tab_data = globals.clean_page_text(tab_data)
-                            debug_file.write(tab_data + '\n\n')
-                            page_data.append(tab_data)
-                        except:
-                            url = str(driver.current_url)
-                            print('Error at retrieving data on "%s".\n' % (url))
-                            debug_file.write('Error at retrieving data on "%s".\n' % (url))
-                            
-                        driver.close()
-                        driver.switch_to.window(driver.window_handles[0])
-                        tab_data = ''
                     except:
-                        url = str(driver.current_url)
-                        print('Error at opening xpath "%s" from page "%s".\n' % (xpath, url))
-                        debug_file.write('Error at opening xpath "%s" from page "%s".\n' % (xpath, url))
+                        error = globals.simple_error("landing_page_navigation_error", driver.current_url, xpath)
+                        print(error)
+                        debug_file.write(error)
+                        continue
 
-                page_number += 1
-                landing_page_text = ''
-                xpaths_to_navigate = []
+                    try:
+                        tab_data = driver.find_element(By.XPATH, "(.//*[normalize-space(text()) and normalize-space(.)='Login'])[1]/following::div[2]").text
+                        tab_data = globals.clean_page_text(tab_data)
+                        debug_file.write(tab_data + "\n\n")
+                        page_data.append(tab_data)
+                    except:
+                        error = globals.simple_error("posting_opening_error", driver.current_url)
+                        print(error)
+                        debug_file.write(error)
+                        
+                    driver.close()
+                    driver.switch_to.window(driver.window_handles[0])
+
+                for page in page_data:
+                    try:
+                        listing_data_row = popup_retail_parser.parse_listing_data(page, headers)
+                        print(listing_data_row[0:99])
+                        output_file.write(listing_data_row + "\n")
+                    except:
+                        error = globals.simple_error("parsing_error", "", page)
+                        print(error)
+                        debug_file.write(error)
+
+                page_data = []
+                page_number = page_number + 1
+                next_page = base_url + str(page_number)
 
                 try:
-                    multi_pages = driver.find_element(By.XPATH, '(.//*[normalize-space(text()) and normalize-space(.)="'"..."'"])[1]/following::i[1]')
-                    if multi_pages == True:
-                        driver.find_element(By.XPATH, '(.//*[normalize-space(text()) and normalize-space(.)="'"..."'"])[1]/following::i[1]').click()
-                    else:
-                        driver.find_element(By.XPATH, '(.//*[normalize-space(text()) and normalize-space(.)="'"per day"'"])[' + len(xpaths_to_navigate) + ']/following::i[1]').click()
+                    driver.get(next_page)
                 except:
-                    url = str(driver.current_url)
-                    print('Error navigating to next page from URL %s.\n' % (url))
-                    debug_file.write('Error navigating to next page from URL %s.\n' % (url))
-                    break
-
-            for page in page_data:
-                listing_data_row = popup_retail_methods.get_listing_data(page, headers)
-                output_file.write(listing_data_row + '\n')
+                    error = globals.simple_error("next_page_error", driver.current_url)
+                    print(page_number - 1, page_number, number_of_pages, error)
+                    debug_file.write(page_number - 1, page_number, number_of_pages, error)
 
         output_file.close()
         debug_file.close()
-
-    def is_element_present(self, how, what):
-        try:
-            self.driver.find_element(by = how, value = what)
-        except NoSuchElementException:
-            print(str(how) + ' ' + str(what))
-            return False
-        return True
-    
-    def is_alert_present(self):
-        try: self.driver.switch_to_alert()
-        except NoAlertPresentException: return False
-        return True
-    
-    def close_alert_and_get_its_text(self):
-        try:
-            alert = self.driver.switch_to_alert()
-            alert_text = alert.text
-            if self.accept_next_alert:
-                alert.accept()
-            else:
-                alert.dismiss()
-            return alert_text
-        finally:
-            print(alert_text)
-            self.accept_next_alert = True
-    
-    def tearDown(self):
+        
+    def tear_down(self):
         self.driver.quit()
         self.assertEqual([], self.verificationErrors)
 
-if __name__ == '__main__':
-    unittest.main()
+unittest.main()
